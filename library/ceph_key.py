@@ -97,6 +97,11 @@ options:
             - Destination to write the keyring
         required: false
         default: /etc/ceph/
+    mode:
+        description:
+            - File mode for the keyring (defaults to umask)
+        required: false
+        default: None
 '''
 
 EXAMPLES = '''
@@ -120,6 +125,7 @@ caps:
       osd: allow *
       mgr: allow *
       mds: allow
+    mode: 0400
     import_key: False
 
 - name: create monitor initial keyring
@@ -190,7 +196,9 @@ def fatal(message, module):
 def key_mode(file_path, mode):
     '''
     Change mode file for a CephX key
-    Problem, how to do this on containerized deployment?
+    For containerized cluster, the module expects that the keys
+    will be stored into a bindmounted directory.
+    So this directory is accessible from the host.
     '''
     os.chmod(file_path, mode)
 
@@ -396,6 +404,7 @@ def run_module():
         import_key=dict(type='bool', required=False, default=True),
         auid=dict(type='str', required=False, default=None),
         dest=dict(type='str', required=False, default='/etc/ceph/'),
+        mode=dict(type='int', required=False, default=None),
     )
 
     module = AnsibleModule(
@@ -413,6 +422,7 @@ def run_module():
     import_key = module.params.get('import_key')
     auid = module.params.get('auid')
     dest = module.params.get('dest')
+    mode = module.params.get('mode')
 
     result = dict(
         changed=False,
@@ -440,7 +450,8 @@ def run_module():
         if not caps:
             fatal("Capabilities must be provided when state is 'present'", module)
 
-        # We allow 'present' to override any existing key ONLY if a secret is provided, if not we skip the creation
+        # We allow 'present' to override any existing key ONLY if a secret is provided
+        # if not we skip the creation
         if import_key:
             if rc == 0 and not secret:
                 result["stdout"] = "skipped, since {0} already exists, if you want to update a key use 'state: update'".format(
@@ -450,7 +461,10 @@ def run_module():
 
         rc, cmd, out, err = exec_commands(module, create_key(
             module, result, cluster, name, secret, caps, import_key, auid, dest, containerized))
-
+        if mode:
+            file_path = os.path.join(
+                dest + "/" + cluster + "." + name + ".keyring")
+            key_mode(file_path, mode)
     elif state == "update":
         if not caps:
             fatal("Capabilities must be provided when state is 'update'", module)
