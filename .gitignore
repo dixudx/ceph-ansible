@@ -20,3 +20,6 @@ group_vars/*.yml
 ceph-ansible.spec
 *.retry
 *.pytest_cache
+.cache/
+tests/.cache/
+.ropeproject/
